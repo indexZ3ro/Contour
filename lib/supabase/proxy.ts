@@ -47,6 +47,11 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
 
+  // API routes authenticate themselves and must answer with JSON (401), not an HTML redirect.
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
+
   if (
     request.nextUrl.pathname !== "/" &&
     !user &&

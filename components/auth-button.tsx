@@ -1,19 +1,16 @@
 import Link from "next/link";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { createClient } from "@/lib/supabase/server";
+import { getSession } from "@/lib/auth/rbac";
 import { LogoutButton } from "./logout-button";
 
 export async function AuthButton() {
-  const supabase = await createClient();
+  const session = await getSession();
 
-  // You can also use getUser() which will be slower.
-  const { data } = await supabase.auth.getClaims();
-
-  const user = data?.claims;
-
-  return user ? (
-    <div className="flex items-center gap-4">
-      Hey, {user.email}!
+  return session ? (
+    <div className="flex items-center gap-3">
+      <span className="hidden sm:inline">{session.email}</span>
+      {session.role && <Badge variant="outline" className="capitalize">{session.role}</Badge>}
       <LogoutButton />
     </div>
   ) : (

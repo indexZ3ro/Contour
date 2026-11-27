@@ -1,0 +1,28 @@
+import Link from "next/link";
+import { Suspense } from "react";
+import { AuthButton } from "@/components/auth-button";
+import { ThemeSwitcher } from "@/components/theme-switcher";
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen flex flex-col items-center">
+      <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16">
+        <div className="w-full max-w-5xl flex justify-between items-center p-3 px-5 text-sm">
+          <div className="flex gap-5 items-center font-semibold">
+            <Link href="/">Contour LMS</Link>
+            <Link href="/dashboard" className="font-normal text-muted-foreground hover:text-foreground">
+              Dashboard
+            </Link>
+          </div>
+          <Suspense>
+            <AuthButton />
+          </Suspense>
+        </div>
+      </nav>
+      <div className="flex-1 w-full max-w-5xl p-5">{children}</div>
+      <footer className="w-full flex items-center justify-center border-t text-xs gap-8 py-8">
+        <ThemeSwitcher />
+      </footer>
+    </main>
+  );
+}
