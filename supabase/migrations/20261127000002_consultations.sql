@@ -1,24 +1,19 @@
 -- =============================================================================
--- Consultations (current state) with an append-only audit history.
---
---   consultation_status_types 1 ──< consultations 1 ──< consultation_status_history
---
--- consultations holds each booking's CURRENT status and scheduled time.
--- Every insert/update is recorded by trigger in consultation_status_history
--- (status, scheduled time in effect, when, by whom). Clients cannot write the
--- history directly, so it cannot be skipped or forged.
+-- Consultations
+--   consultations                current state of each booking
+--   consultation_status_history  append-only audit log, written by trigger
+--   consultation_status_types    the statuses and the permission needed to set each
 -- =============================================================================
 
--- Lookup table of status types. A table (not an enum) so labels can change and
--- types can be added without ALTER TYPE. Each status names the permission
--- required to move a consultation into it, so RBAC for transitions is data.
+-- -----------------------------------------------------------------------------
+-- Tables
+-- -----------------------------------------------------------------------------
 create table public.consultation_status_types (
   id                  smallint primary key,
-  code                text not null unique check (code ~ '^[a-z_]+$'),
+  code                text not null unique,
   label               text not null,
   required_permission public.app_permission not null
 );
-comment on table public.consultation_status_types is 'Allowed consultation statuses and the permission needed to set each.';
 
 insert into public.consultation_status_types (id, code, label, required_permission) values
   (1, 'scheduled',   'Scheduled',   'consultations.create'),
@@ -38,70 +33,50 @@ create table public.consultations (
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );
-comment on table public.consultations is 'A booked consultation and its current status.';
 
--- Student dashboard: own consultations ordered by time. Admin: all, ordered by time.
-create index consultations_student_scheduled_idx on public.consultations (student_id, scheduled_at);
-create index consultations_scheduled_idx on public.consultations (scheduled_at);
-create index consultations_status_type_idx on public.consultations (status_type_id);
+create index on public.consultations (student_id, scheduled_at); -- student dashboard
+create index on public.consultations (scheduled_at);             -- admin dashboard
 
 create table public.consultation_status_history (
   id              bigint generated always as identity primary key,
   consultation_id uuid not null references public.consultations (id) on delete cascade,
   status_type_id  smallint not null references public.consultation_status_types (id),
-  scheduled_at    timestamptz not null,
+  scheduled_at    timestamptz not null, -- the consultation time in effect from this change
   created_at      timestamptz not null default now(),
   created_by      uuid references auth.users (id) on delete set null
 );
-comment on table public.consultation_status_history is 'Append-only audit log of every consultation status/time change. Written by trigger only.';
-comment on column public.consultation_status_history.scheduled_at is 'Consultation time in effect from this change onwards.';
-comment on column public.consultation_status_history.created_at is 'When the status was set.';
 
-create index consultation_status_history_consultation_idx
-  on public.consultation_status_history (consultation_id, id);
+create index on public.consultation_status_history (consultation_id, id);
 
 -- -----------------------------------------------------------------------------
--- Transition rules, enforced in the database so no client can bypass them.
---   (insert)                         -> scheduled (future time)
---   scheduled|rescheduled|incomplete -> rescheduled (new future time)
---   scheduled|rescheduled|incomplete -> completed | cancelled
+-- Rules: enforced in the database so no client can bypass them.
+--   new                              -> scheduled (future time)
+--   scheduled|rescheduled|incomplete -> rescheduled (new future time) | completed | cancelled
 --   completed                        -> incomplete
---   cancelled                        -> (terminal)
--- The time may only change via 'rescheduled'. Booking details are immutable.
--- Custom SQLSTATEs: CT409 = invalid transition, CT400 = invalid input.
+--   cancelled                        -> nothing (final)
+-- Errors use custom codes the API maps to HTTP: CT400 -> 400, CT409 -> 409.
 -- -----------------------------------------------------------------------------
-create or replace function public.validate_consultation_change()
+create function public.validate_consultation_change()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
 declare
-  new_code text;
+  new_code text := (select code from public.consultation_status_types where id = new.status_type_id);
   old_code text;
 begin
-  select code into new_code from public.consultation_status_types where id = new.status_type_id;
-
   if tg_op = 'INSERT' then
     if new_code <> 'scheduled' then
       raise exception 'A consultation must start as scheduled' using errcode = 'CT409';
-    end if;
-    if new.scheduled_at <= now() then
+    elsif new.scheduled_at <= now() then
       raise exception 'Consultation time must be in the future' using errcode = 'CT400';
     end if;
-    new.created_at := now();
+    new.created_at := now(); -- never trust client-supplied timestamps
     new.updated_at := now();
     return new;
   end if;
 
-  select code into old_code from public.consultation_status_types where id = old.status_type_id;
-
-  if new.student_id is distinct from old.student_id
-     or new.first_name is distinct from old.first_name
-     or new.last_name is distinct from old.last_name
-     or new.reason is distinct from old.reason
-     or new.created_at is distinct from old.created_at then
-    raise exception 'Booking details cannot be changed' using errcode = 'CT409';
-  end if;
+  old_code := (select code from public.consultation_status_types where id = old.status_type_id);
 
   if old_code = 'cancelled' then
     raise exception 'Consultation is cancelled and can no longer be changed' using errcode = 'CT409';
@@ -111,17 +86,12 @@ begin
     raise exception 'Consultation is already booked' using errcode = 'CT409';
   elsif new_code = 'incomplete' and old_code <> 'completed' then
     raise exception 'Only a completed consultation can be marked incomplete' using errcode = 'CT409';
-  elsif new_code in ('completed', 'rescheduled', 'cancelled') and old_code = 'completed' then
+  elsif new_code <> 'incomplete' and old_code = 'completed' then
     raise exception 'Consultation is completed; mark it incomplete first' using errcode = 'CT409';
-  end if;
-
-  if new_code = 'rescheduled' then
-    if new.scheduled_at <= now() then
-      raise exception 'Consultation time must be in the future' using errcode = 'CT400';
-    end if;
-    if new.scheduled_at = old.scheduled_at then
-      raise exception 'New time must differ from the current time' using errcode = 'CT400';
-    end if;
+  elsif new_code = 'rescheduled' and new.scheduled_at <= now() then
+    raise exception 'Consultation time must be in the future' using errcode = 'CT400';
+  elsif new_code = 'rescheduled' and new.scheduled_at = old.scheduled_at then
+    raise exception 'New time must differ from the current time' using errcode = 'CT400';
   end if;
 
   new.updated_at := now();
@@ -129,15 +99,13 @@ begin
 end;
 $$;
 
-create trigger consultations_validate_change
+create trigger validate_change
   before insert or update on public.consultations
   for each row execute function public.validate_consultation_change();
 
--- -----------------------------------------------------------------------------
--- Audit: record every booking and change. SECURITY DEFINER so it can write the
--- history table, which API users have no write access to.
--- -----------------------------------------------------------------------------
-create or replace function public.record_consultation_history()
+-- Audit: every booking and change is recorded. SECURITY DEFINER because API
+-- users can't write the history table themselves, so it can't be forged.
+create function public.record_consultation_history()
 returns trigger
 language plpgsql
 security definer
@@ -150,25 +118,60 @@ begin
 end;
 $$;
 
-create trigger consultations_record_history
+create trigger record_history
   after insert or update on public.consultations
   for each row execute function public.record_consultation_history();
 
--- The audit log itself is immutable for everyone.
-create or replace function public.prevent_history_mutation()
-returns trigger
-language plpgsql
-set search_path = ''
-as $$
-begin
-  raise exception 'Consultation status history is append-only' using errcode = 'CT409';
-end;
-$$;
-
-create trigger consultation_status_history_immutable
-  before update on public.consultation_status_history
-  for each row execute function public.prevent_history_mutation();
-
 revoke execute on function public.validate_consultation_change from anon, authenticated, public;
 revoke execute on function public.record_consultation_history from anon, authenticated, public;
-revoke execute on function public.prevent_history_mutation from anon, authenticated, public;
+
+-- -----------------------------------------------------------------------------
+-- Access: least-privilege grants, then permission-based RLS.
+-- -----------------------------------------------------------------------------
+revoke all on public.consultation_status_types, public.consultations, public.consultation_status_history
+  from anon, authenticated;
+
+grant select on public.consultation_status_types to authenticated;
+grant select, insert on public.consultations to authenticated;
+grant update (status_type_id, scheduled_at) on public.consultations to authenticated; -- only these columns
+grant select on public.consultation_status_history to authenticated;                 -- read-only
+
+alter table public.consultation_status_types enable row level security;
+alter table public.consultations enable row level security;
+alter table public.consultation_status_history enable row level security;
+
+create policy "Anyone signed in can read status types"
+  on public.consultation_status_types for select to authenticated
+  using (true);
+
+create policy "Students read their own consultations"
+  on public.consultations for select to authenticated
+  using ((select public.authorize('consultations.read.own')) and student_id = (select auth.uid()));
+
+create policy "Admins read all consultations"
+  on public.consultations for select to authenticated
+  using ((select public.authorize('consultations.read.all')));
+
+create policy "Students book for themselves"
+  on public.consultations for insert to authenticated
+  with check ((select public.authorize('consultations.create')) and student_id = (select auth.uid()));
+
+-- Changing status needs ownership AND the permission the new status requires.
+create policy "Students change their own consultations"
+  on public.consultations for update to authenticated
+  using (student_id = (select auth.uid()))
+  with check (
+    student_id = (select auth.uid())
+    and public.authorize((select required_permission from public.consultation_status_types where id = status_type_id))
+  );
+
+create policy "Students read their own history"
+  on public.consultation_status_history for select to authenticated
+  using (
+    (select public.authorize('consultations.read.own'))
+    and exists (select 1 from public.consultations c where c.id = consultation_id and c.student_id = (select auth.uid()))
+  );
+
+create policy "Admins read all history"
+  on public.consultation_status_history for select to authenticated
+  using ((select public.authorize('consultations.read.all')));

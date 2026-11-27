@@ -85,28 +85,28 @@ isOneToOne: false
                   ]
                 },"role_permissions": {
                   Row: {
-                    "id": number,"permission": Database["public"]['Enums']["app_permission"],"role": Database["public"]['Enums']["app_role"]
+                    "permission": Database["public"]['Enums']["app_permission"],"role": Database["public"]['Enums']["app_role"]
                   }
                   ComputedFields: never
                   Insert: {
-                    "id"?: never,"permission": Database["public"]['Enums']["app_permission"],"role": Database["public"]['Enums']["app_role"]
+                    "permission": Database["public"]['Enums']["app_permission"],"role": Database["public"]['Enums']["app_role"]
                   }
                   Update: {
-                    "id"?: never,"permission"?: Database["public"]['Enums']["app_permission"],"role"?: Database["public"]['Enums']["app_role"]
+                    "permission"?: Database["public"]['Enums']["app_permission"],"role"?: Database["public"]['Enums']["app_role"]
                   }
                   Relationships: [
                     
                   ]
                 },"user_roles": {
                   Row: {
-                    "created_at": string,"id": number,"role": Database["public"]['Enums']["app_role"],"user_id": string
+                    "role": Database["public"]['Enums']["app_role"],"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: never,"role"?: Database["public"]['Enums']["app_role"],"user_id": string
+                    "role": Database["public"]['Enums']["app_role"],"user_id": string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: never,"role"?: Database["public"]['Enums']["app_role"],"user_id"?: string
+                    "role"?: Database["public"]['Enums']["app_role"],"user_id"?: string
                   }
                   Relationships: [
                     

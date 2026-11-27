@@ -22,10 +22,9 @@ A small consultation-booking LMS built with **Next.js 16 (App Router) · TypeScr
 npm install
 npm run db:start          # supabase start: boots Postgres/Auth/etc., applies migrations + seed
 ```
-Create `.env.local` with values printed by `npx supabase status`:
-```
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<Publishable key>
+Copy `.env.example` to `.env.local` and set the publishable key printed by `npx supabase status`:
+```bash
+cp .env.example .env.local
 ```
 ```bash
 npm run dev               # http://localhost:3000
@@ -46,6 +45,20 @@ http://127.0.0.1:54324.
 Useful scripts:
 - `npm run db:reset`: rebuild the database from migrations + `supabase/seed.sql`
 - `npm run db:types`: regenerate `lib/database.types.ts` from the schema
+- `npm run db:test`: run the database tests (see [Tests](#tests))
+
+### Tests
+`supabase/tests/consultations_rls.test.sql` is a [pgTAP](https://supabase.com/docs/guides/database/testing)
+suite that runs against the real schema, switching between a student, another student, an admin and a
+signed-out user. It checks the security rules where they're enforced, in Postgres:
+
+- students only see, book and change their own consultations
+- booking details can't be edited, and history can't be written directly
+- the roles table is hidden, and admins are read-only
+- transition rules (cancelled is final, the time changes only through a reschedule)
+- every change is recorded in the history
+
+It runs inside a transaction that's rolled back, so it leaves no data behind.
 
 ### Hosted Supabase + Vercel
 1. Create a Supabase project, then `npx supabase link --project-ref <ref>` and `npx supabase db push`
@@ -68,10 +81,10 @@ Useful scripts:
 ### Database (`supabase/migrations`)
 | Migration | Contents |
 |---|---|
-| `…_rbac.sql` | `app_role` / `app_permission` enums, `user_roles`, `role_permissions`, the custom access token hook, `authorize()`, and the sign-up trigger that assigns `student` |
-| `…_consultations.sql` | `consultation_status_types`, `consultations`, `consultation_status_history`, the transition-rule trigger and the history trigger |
-| `…_consultations_rls.sql` | Grants (least privilege) and permission-based RLS policies |
-| `…_signup_role_selection.sql` | **Demo only.** The sign-up trigger assigns the role chosen on the sign-up form |
+| `…_auth_rbac.sql` | Roles and permissions (`user_roles`, `role_permissions`), the token hook that adds `user_role` to the JWT, `authorize()`, and the sign-up trigger that assigns each new user a role |
+| `…_consultations.sql` | `consultation_status_types`, `consultations` and `consultation_status_history`, the rules trigger and the history trigger, then the grants and RLS policies |
+
+Each file is one feature and reads top to bottom: tables, rules, then access.
 
 ```
 auth.users 1──1 user_roles (role)            role_permissions (role → permission)
@@ -91,8 +104,8 @@ consultation_status_types: scheduled | rescheduled | completed | incomplete | ca
 **`consultations` holds the current state; `consultation_status_history` holds every change.**
 Booking inserts a consultation and an `AFTER INSERT OR UPDATE` trigger records each change as a
 history row: the status, the `scheduled_at` in effect, when it was set and who set it (`auth.uid()`).
-Users have no write access to the history table, so the audit trail can't be skipped or forged, and
-history rows can't be edited. Cancel is a status, not a delete, so students still see their cancelled bookings.
+Users have only read access to the history table, so the audit trail can't be skipped, forged or
+edited. Cancel is a status, not a delete, so students still see their cancelled bookings.
 
 **Transitions are enforced in Postgres** (`validate_consultation_change` trigger), so no client can bypass them:
 
@@ -102,8 +115,9 @@ scheduled | rescheduled | incomplete → rescheduled (new future time) | complet
 completed → incomplete
 cancelled → (terminal)
 ```
-The trigger also blocks edits to booking details and only lets the time change through a reschedule.
-Column-level grants back this up: API users can only `UPDATE (status_type_id, scheduled_at)`.
+The trigger only lets the time change through a reschedule, and sets `created_at` / `updated_at` itself
+so clients can't supply them. Booking details are immutable through column-level grants: API users can
+only `UPDATE (status_type_id, scheduled_at)`.
 Concurrent changes to the same consultation are serialised by Postgres's row lock. Custom SQLSTATEs
 (`CT400`, `CT409`) map cleanly to HTTP 400 / 409.
 
@@ -155,7 +169,7 @@ lib/consultations/validation.ts Request parsing / validation
 lib/consultations/client-api.ts Browser fetch wrappers for the API
 lib/api/http.ts                ApiError, Postgres→HTTP error mapping, handler wrapper
 components/consultations/*     Booking form, student list, admin table, history
-supabase/                      config.toml, migrations, seed.sql
+supabase/                      config.toml, migrations, seed.sql, tests (pgTAP)
 ```
 
 ---
@@ -199,19 +213,19 @@ supabase/                      config.toml, migrations, seed.sql
 > ⚠️ **Not production-safe.** Anyone can create an admin account and read every consultation.
 > It exists so reviewers can try both roles without running SQL.
 
-The sign-up form sends `{ role }` as user metadata. The trigger in `…_signup_role_selection.sql`
-reads it **once**, at account creation; missing or unknown values fall back to `student`. Users can
-edit their own metadata later, but that never changes `user_roles`, which they cannot write.
-Authorisation still comes entirely from `user_roles` → JWT claim → `role_permissions`.
+The sign-up form sends `{ role }` as user metadata. The sign-up trigger (`handle_new_user_role` in
+`…_auth_rbac.sql`, marked `DEMO ONLY`) reads it **once**, at account creation; anything other than
+`admin` means `student`. Users can edit their own metadata later, but that never changes `user_roles`,
+which they cannot write. Authorisation still comes entirely from `user_roles` → JWT claim → `role_permissions`.
 
-**In production** I would remove that migration's behaviour (every sign-up → no privileged role) and
+**In production** I would change that trigger so every sign-up gets no privileged role, and
 provision admins out-of-band: an invite flow where an existing admin issues a single-use invite,
 SSO/IdP group mapping for staff, or an operator tool using the service role on the server. Since
 admin is a separate role rather than a promotion, staff would sign up through a separate path.
 
 ## Future improvements
 - Schema validation with zod (shared client/server), and generated OpenAPI docs
-- Tests: Vitest for validation/handlers, pgTAP for RLS policies and transition rules
+- Vitest tests for request validation and the API route handlers, and running the pgTAP suite in CI
 - Filtering/search UI for admins, and cursor-based pagination
 - Tutors/availability with an exclusion constraint to prevent double-booking
 - Rate limiting on the booking endpoints; CI running migrations + lints
