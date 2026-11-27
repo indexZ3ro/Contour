@@ -34,8 +34,12 @@ export function toDatetimeLocalValue(date: Date) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
-/** Lazily loads and shows the audit trail for one consultation. */
-export function StatusHistory({ consultationId }: { consultationId: string }) {
+/**
+ * Open/close state plus lazy loading of a consultation's audit trail.
+ * Split from the UI so the toggle and the panel can render in different
+ * places (e.g. a table cell and an expandable row beneath it).
+ */
+export function useStatusHistory(consultationId: string) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<ConsultationStatusEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,27 +57,65 @@ export function StatusHistory({ consultationId }: { consultationId: string }) {
     }
   }
 
+  return { open, toggle, entries, error };
+}
+
+export function StatusHistoryToggle({
+  open,
+  onToggle,
+  controls,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  controls?: string;
+}) {
+  return (
+    <Button
+      variant="link"
+      size="sm"
+      className="h-auto p-0"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls={controls}
+    >
+      {open ? "Hide history" : "Show history"}
+    </Button>
+  );
+}
+
+export function StatusHistoryPanel({
+  entries,
+  error,
+}: {
+  entries: ConsultationStatusEntry[] | null;
+  error: string | null;
+}) {
+  if (error) return <p className="text-sm text-destructive">{error}</p>;
+  if (!entries) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  return (
+    <ol className="space-y-1 border-l pl-4 text-sm">
+      {entries.map((e) => (
+        <li key={e.id} className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={e.status} label={e.statusLabel} />
+          <span className="text-muted-foreground">
+            set <LocalDateTime iso={e.createdAt} /> · for <LocalDateTime iso={e.scheduledAt} />
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Toggle with the history expanding directly beneath it (used in the student cards). */
+export function StatusHistory({ consultationId }: { consultationId: string }) {
+  const { open, toggle, entries, error } = useStatusHistory(consultationId);
+  const panelId = `history-${consultationId}`;
   return (
     <div className="text-sm">
-      <Button variant="link" size="sm" className="h-auto p-0" onClick={toggle}>
-        {open ? "Hide history" : "Show history"}
-      </Button>
+      <StatusHistoryToggle open={open} onToggle={toggle} controls={panelId} />
       {open && (
-        <div className="mt-2">
-          {error && <p className="text-destructive">{error}</p>}
-          {!error && !entries && <p className="text-muted-foreground">Loading…</p>}
-          {entries && (
-            <ol className="space-y-1 border-l pl-4">
-              {entries.map((e) => (
-                <li key={e.id} className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={e.status} label={e.statusLabel} />
-                  <span className="text-muted-foreground">
-                    set <LocalDateTime iso={e.createdAt} /> · for <LocalDateTime iso={e.scheduledAt} />
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
+        <div id={panelId} className="mt-2">
+          <StatusHistoryPanel entries={entries} error={error} />
         </div>
       )}
     </div>
