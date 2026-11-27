@@ -15,7 +15,9 @@ const ROLE_PERMISSIONS: Record<AppRole, readonly AppPermission[]> = {
   student: [
     "consultations.create",
     "consultations.read.own",
-    "consultations.update.own",
+    "consultations.complete.own",
+    "consultations.reschedule.own",
+    "consultations.cancel.own",
   ],
   admin: ["consultations.read.all"],
 };
@@ -55,20 +57,32 @@ export async function getSession(
   };
 }
 
-/**
- * Route-handler guard. Throws ApiError(401) when unauthenticated and
- * ApiError(403) unless the session holds at least one of `anyOf`.
- */
-export async function requirePermission(
-  anyOf: AppPermission | readonly AppPermission[],
+/** Route-handler guard: throws ApiError(401) when unauthenticated. */
+export async function requireSession(
   supabase?: Awaited<ReturnType<typeof createClient>>,
 ): Promise<Session> {
   const session = await getSession(supabase);
   if (!session) throw new ApiError(401, "unauthenticated", "Sign in required");
+  return session;
+}
 
+/** Throws ApiError(403) unless the session holds at least one of `anyOf`. */
+export function assertPermission(
+  session: Session,
+  anyOf: AppPermission | readonly AppPermission[],
+) {
   const required = Array.isArray(anyOf) ? anyOf : [anyOf];
   if (!required.some((p) => hasPermission(session, p))) {
     throw new ApiError(403, "forbidden", "You do not have permission to do this");
   }
+}
+
+/** Route-handler guard: 401 when unauthenticated, 403 unless one of `anyOf` is held. */
+export async function requirePermission(
+  anyOf: AppPermission | readonly AppPermission[],
+  supabase?: Awaited<ReturnType<typeof createClient>>,
+): Promise<Session> {
+  const session = await requireSession(supabase);
+  assertPermission(session, anyOf);
   return session;
 }

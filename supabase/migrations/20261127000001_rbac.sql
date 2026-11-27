@@ -6,10 +6,14 @@
 -- Roles a user can hold, and the fine-grained permissions they grant.
 create type public.app_role as enum ('student', 'admin');
 
+-- One permission per action, so each can be granted independently
+-- (e.g. a role that may reschedule but not cancel).
 create type public.app_permission as enum (
   'consultations.create',
   'consultations.read.own',
-  'consultations.update.own',
+  'consultations.complete.own',
+  'consultations.reschedule.own',
+  'consultations.cancel.own',
   'consultations.read.all'
 );
 
@@ -34,7 +38,9 @@ comment on table public.role_permissions is 'Permissions granted to each role.';
 insert into public.role_permissions (role, permission) values
   ('student', 'consultations.create'),
   ('student', 'consultations.read.own'),
-  ('student', 'consultations.update.own'),
+  ('student', 'consultations.complete.own'),
+  ('student', 'consultations.reschedule.own'),
+  ('student', 'consultations.cancel.own'),
   ('admin',   'consultations.read.all');
 
 -- -----------------------------------------------------------------------------

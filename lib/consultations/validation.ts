@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api/http";
+import type { Database } from "@/lib/database.types";
 
 /**
  * Hand-rolled request validation (kept dependency-free). The database enforces
@@ -23,6 +24,17 @@ export const SETTABLE_STATUSES = [
   "cancelled",
 ] as const;
 export type SettableStatus = (typeof SETTABLE_STATUSES)[number];
+
+/**
+ * Permission required to move a consultation into each status. Mirrors
+ * consultation_status_types.required_permission, which RLS enforces.
+ */
+export const STATUS_PERMISSION = {
+  completed: "consultations.complete.own",
+  incomplete: "consultations.complete.own",
+  rescheduled: "consultations.reschedule.own",
+  cancelled: "consultations.cancel.own",
+} as const satisfies Record<SettableStatus, Database["public"]["Enums"]["app_permission"]>;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

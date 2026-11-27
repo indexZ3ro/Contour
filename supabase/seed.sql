@@ -38,31 +38,28 @@ begin
 end;
 $$;
 
--- Demo consultations for the student, with some history.
+-- Demo consultations for the student. Changes are plain updates; the history
+-- trigger records each one, exactly as it does for API traffic. The seed runs
+-- without a JWT, so history rows have no created_by.
 do $$
 declare
   student_id uuid := '00000000-0000-0000-0000-00000000b001';
-  c1 uuid; c2 uuid; c3 uuid;
+  c2 uuid; c3 uuid;
 begin
-  insert into public.consultations (student_id, first_name, last_name, reason)
-  values (student_id, 'Sam', 'Student', 'Help with Methods 3/4 calculus revision')
-  returning id into c1;
-  insert into public.consultation_statuses (consultation_id, status_type_id, scheduled_at, created_by)
-  values (c1, 1, now() + interval '3 days', student_id);
+  insert into public.consultations (student_id, first_name, last_name, reason, scheduled_at)
+  values (student_id, 'Sam', 'Student', 'Help with Methods 3/4 calculus revision', now() + interval '3 days');
 
-  insert into public.consultations (student_id, first_name, last_name, reason)
-  values (student_id, 'Sam', 'Student', 'Essay feedback for English SAC')
+  -- Booked, rescheduled, then completed.
+  insert into public.consultations (student_id, first_name, last_name, reason, scheduled_at)
+  values (student_id, 'Sam', 'Student', 'Essay feedback for English SAC', now() + interval '1 day')
   returning id into c2;
-  insert into public.consultation_statuses (consultation_id, status_type_id, scheduled_at, created_by)
-  values (c2, 1, now() + interval '1 day', student_id),
-         (c2, 2, now() + interval '5 days', student_id),
-         (c2, 3, now(), student_id);
+  update public.consultations set status_type_id = 2, scheduled_at = now() + interval '5 days' where id = c2;
+  update public.consultations set status_type_id = 3 where id = c2;
 
-  insert into public.consultations (student_id, first_name, last_name, reason)
-  values (student_id, 'Sam', 'Student', 'Chemistry exam strategy')
+  -- Booked, then cancelled.
+  insert into public.consultations (student_id, first_name, last_name, reason, scheduled_at)
+  values (student_id, 'Sam', 'Student', 'Chemistry exam strategy', now() + interval '2 days')
   returning id into c3;
-  insert into public.consultation_statuses (consultation_id, status_type_id, scheduled_at, created_by)
-  values (c3, 1, now() + interval '2 days', student_id),
-         (c3, 5, now(), student_id);
+  update public.consultations set status_type_id = 5 where id = c3;
 end;
 $$;

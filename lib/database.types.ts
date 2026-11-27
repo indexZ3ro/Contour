@@ -23,21 +23,7 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "consultation_status_types": {
-                  Row: {
-                    "code": string,"id": number,"label": string
-                  }
-                  ComputedFields: never
-                  Insert: {
-                    "code": string,"id": number,"label": string
-                  }
-                  Update: {
-                    "code"?: string,"id"?: number,"label"?: string
-                  }
-                  Relationships: [
-                    
-                  ]
-                },"consultation_statuses": {
+            "consultation_status_history": {
                   Row: {
                     "consultation_id": string,"created_at": string,"created_by": string | null,"id": number,"scheduled_at": string,"status_type_id": number
                   }
@@ -50,38 +36,52 @@ export type Database = {
                   }
                   Relationships: [
                     {
-      foreignKeyName: "consultation_statuses_consultation_id_fkey"
-      columns: ["consultation_id"]
-isOneToOne: false
-      referencedRelation: "consultation_current"
-      referencedColumns: ["id"]
-    },{
-      foreignKeyName: "consultation_statuses_consultation_id_fkey"
+      foreignKeyName: "consultation_status_history_consultation_id_fkey"
       columns: ["consultation_id"]
 isOneToOne: false
       referencedRelation: "consultations"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "consultation_statuses_status_type_id_fkey"
+      foreignKeyName: "consultation_status_history_status_type_id_fkey"
       columns: ["status_type_id"]
 isOneToOne: false
       referencedRelation: "consultation_status_types"
       referencedColumns: ["id"]
     }
                   ]
-                },"consultations": {
+                },"consultation_status_types": {
                   Row: {
-                    "created_at": string,"first_name": string,"id": string,"last_name": string,"reason": string,"student_id": string
+                    "code": string,"id": number,"label": string,"required_permission": Database["public"]['Enums']["app_permission"]
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"first_name": string,"id"?: string,"last_name": string,"reason": string,"student_id"?: string
+                    "code": string,"id": number,"label": string,"required_permission": Database["public"]['Enums']["app_permission"]
                   }
                   Update: {
-                    "created_at"?: string,"first_name"?: string,"id"?: string,"last_name"?: string,"reason"?: string,"student_id"?: string
+                    "code"?: string,"id"?: number,"label"?: string,"required_permission"?: Database["public"]['Enums']["app_permission"]
                   }
                   Relationships: [
                     
+                  ]
+                },"consultations": {
+                  Row: {
+                    "created_at": string,"first_name": string,"id": string,"last_name": string,"reason": string,"scheduled_at": string,"status_type_id": number,"student_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"first_name": string,"id"?: string,"last_name": string,"reason": string,"scheduled_at": string,"status_type_id"?: number,"student_id"?: string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"first_name"?: string,"id"?: string,"last_name"?: string,"reason"?: string,"scheduled_at"?: string,"status_type_id"?: number,"student_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "consultations_status_type_id_fkey"
+      columns: ["status_type_id"]
+isOneToOne: false
+      referencedRelation: "consultation_status_types"
+      referencedColumns: ["id"]
+    }
                   ]
                 },"role_permissions": {
                   Row: {
@@ -114,32 +114,18 @@ isOneToOne: false
                 }
           }
           Views: {
-            "consultation_current": {
-                  Row: {
-                    "created_at": string,"first_name": string,"id": string,"last_name": string,"reason": string,"scheduled_at": string,"status": string,"status_label": string,"status_set_at": string,"student_id": string
-                  }
-                  ComputedFields: never
-                  Relationships: [
-                    
-                  ]
-                }
+            [_ in never]: never
           }
           Functions: {
             "authorize":
 { Args: { "requested_permission": Database["public"]['Enums']["app_permission"] }; Returns: boolean
                            },
-"book_consultation":
-{ Args: { "p_first_name": string,"p_last_name": string,"p_reason": string,"p_scheduled_at": string }; Returns: string
-                           },
 "custom_access_token_hook":
 { Args: { "event": Json }; Returns: Json
-                           },
-"set_consultation_status":
-{ Args: { "p_consultation_id": string,"p_scheduled_at"?: string,"p_status": string }; Returns: number
                            }
           }
           Enums: {
-            "app_permission": "consultations.create"|"consultations.read.own"|"consultations.update.own"|"consultations.read.all","app_role": "student"|"admin"
+            "app_permission": "consultations.create"|"consultations.read.own"|"consultations.complete.own"|"consultations.reschedule.own"|"consultations.cancel.own"|"consultations.read.all","app_role": "student"|"admin"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -259,7 +245,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "app_permission": ["consultations.create", "consultations.read.own", "consultations.update.own", "consultations.read.all"],"app_role": ["student", "admin"]
+            "app_permission": ["consultations.create", "consultations.read.own", "consultations.complete.own", "consultations.reschedule.own", "consultations.cancel.own", "consultations.read.all"],"app_role": ["student", "admin"]
           }
         }
 } as const

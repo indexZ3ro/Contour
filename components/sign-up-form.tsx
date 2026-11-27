@@ -23,6 +23,7 @@ export function SignUpForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
+  const [role, setRole] = useState<"student" | "admin">("student");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -40,15 +41,24 @@ export function SignUpForm({
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/dashboard`,
+          // DEMO ONLY: read once by the handle_new_user_role trigger to assign the role.
+          data: { role },
         },
       });
       if (error) throw error;
-      router.push("/auth/sign-up-success");
+      // A session is returned only when email confirmation is disabled: the user is
+      // already signed in. Otherwise they must confirm via the emailed link first.
+      if (data.session) {
+        router.push("/dashboard");
+        router.refresh();
+      } else {
+        router.push("/auth/sign-up-success");
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -100,6 +110,21 @@ export function SignUpForm({
                   value={repeatPassword}
                   onChange={(e) => setRepeatPassword(e.target.value)}
                 />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="role">Account type</Label>
+                <select
+                  id="role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as "student" | "admin")}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
+                >
+                  <option value="student">Student</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Demo only: in production, admin accounts would be provisioned, not self-selected.
+                </p>
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
