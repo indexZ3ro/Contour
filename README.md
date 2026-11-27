@@ -17,7 +17,7 @@ A small consultation-booking LMS built with **Next.js 16 (App Router) · TypeScr
 - Node.js 20+
 - Docker Desktop, running (for the local Supabase stack)
 
-### Local (recommended)
+### Running locally
 ```bash
 npm install
 npm run db:start          # supabase start: boots Postgres/Auth/etc., applies migrations + seed
@@ -60,19 +60,13 @@ signed-out user. It checks the security rules where they're enforced, in Postgre
 
 It runs inside a transaction that's rolled back, so it leaves no data behind.
 
-### Hosted Supabase + Vercel
-1. Create a Supabase project, then `npx supabase link --project-ref <ref>` and `npx supabase db push`
-   (applies `supabase/migrations/*`; the seed is **not** pushed).
-2. Dashboard → **Authentication → Hooks** → enable **Customize Access Token (JWT) Claims** and select
-   `public.custom_access_token_hook`. (Locally this is configured in `supabase/config.toml`.)
-3. Dashboard → **Authentication → URL Configuration**: set the Site URL / redirect URLs to the deployment URL.
-4. Deploy to Vercel with `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
-5. Sign up choosing **Admin** as the account type. Alternatively, an existing user's role can be changed in the SQL editor:
-   ```sql
-   update public.user_roles set role = 'admin'
-   where user_id = (select id from auth.users where email = 'you@example.com');
-   ```
-   After a role change the user must sign out and in again (or wait for a token refresh) to receive the new role claim.
+### Changing a user's role
+An existing user's role can be changed in Studio's SQL editor (http://127.0.0.1:54323):
+```sql
+update public.user_roles set role = 'admin'
+where user_id = (select id from auth.users where email = 'you@example.com');
+```
+After a role change the user must sign out and in again (or wait for a token refresh) to receive the new role claim.
 
 ---
 
@@ -205,7 +199,14 @@ supabase/                      config.toml, migrations, seed.sql, tests (pgTAP)
 - First and last name are captured per booking, as specified, rather than taken from the profile.
 - Cancelled is terminal. A completed consultation must be marked incomplete before it is rescheduled or cancelled.
 - Only future times can be booked or rescheduled. Completion is allowed at any time (no "must be in the past" rule).
-- Times are stored as `timestamptz` (UTC) and displayed in the viewer's local timezone.
+- Times are stored as `timestamptz` (a UTC instant) and displayed in the **viewer's** local timezone,
+  with the zone shown (e.g. "3:00 pm AEDT"). Formatting happens in the browser only; on the server it
+  would use the server's timezone (typically UTC in production).
+- **Students book times in their own timezone.** The booking form takes a local date and time and the
+  browser converts it to UTC, so a student in Melbourne picking 3:00 pm books 3:00 pm Melbourne time,
+  which a Perth admin sees as 12:00 pm AWST. In a real scenario we'd need to account for consultations
+  tied to a specific location or tutor, e.g. storing the consultation's IANA timezone
+  (`Australia/Melbourne`) and letting students book and view times in that zone.
 - No availability or double-booking constraints (no tutor/calendar model was specified).
 
 ## Role selection at sign-up (demo only)

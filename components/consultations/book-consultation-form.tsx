@@ -124,14 +124,13 @@ export function BookConsultationForm({
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="scheduledAt">Date and time</Label>
+                <Label htmlFor="scheduledAt">Date and time (your local time)</Label>
                 <Input
                   id="scheduledAt"
                   name="scheduledAt"
                   type="datetime-local"
                   required
                   min={toDatetimeLocalValue(new Date())}
-                  suppressHydrationWarning
                 />
               </div>
               <div className="flex items-end">

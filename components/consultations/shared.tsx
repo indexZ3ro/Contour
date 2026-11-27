@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { consultationsApi } from "@/lib/consultations/client-api";
@@ -19,11 +19,37 @@ export function StatusBadge({ status, label }: { status: StatusCode; label: stri
   return <Badge variant={STATUS_VARIANT[status]}>{label}</Badge>;
 }
 
-/** Renders in the viewer's local timezone (values are stored as UTC). */
+const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZoneName: "short", // e.g. "AEDT", so the zone is never ambiguous
+};
+
+const noopSubscribe = () => () => {};
+
+/** True in the browser, false during server rendering (without an effect or re-render loop). */
+function useIsClient() {
+  return useSyncExternalStore(noopSubscribe, () => true, () => false);
+}
+
+/**
+ * Renders an instant (stored as UTC) in the VIEWER's timezone.
+ * Formatting only happens in the browser: on the server, toLocaleString would
+ * use the server's timezone (UTC on Vercel) and that text would stick after
+ * hydration. The server renders an invisible placeholder of similar width.
+ */
 export function LocalDateTime({ iso }: { iso: string }) {
+  const isClient = useIsClient();
   return (
-    <time dateTime={iso} suppressHydrationWarning>
-      {new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+    <time dateTime={iso}>
+      {isClient ? (
+        new Date(iso).toLocaleString(undefined, DATE_TIME_FORMAT)
+      ) : (
+        <span className="invisible">00 Mmm 0000, 00:00 am AEDT</span>
+      )}
     </time>
   );
 }
