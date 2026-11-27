@@ -47,20 +47,22 @@ async function Dashboard({ searchParams }: Props) {
   });
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const heading = (
+    <header>
+      <h1 className="text-2xl font-semibold">
+        {canReadAll ? "All consultations" : "My consultations"}
+      </h1>
+      <p className="text-sm text-muted-foreground">
+        {canReadAll
+          ? `Read-only view of every consultation in the system (${total} total).`
+          : "Book, reschedule, cancel and track your consultations."}
+      </p>
+    </header>
+  );
+
   return (
     <div className="grid gap-8">
-      <header>
-        <h1 className="text-2xl font-semibold">
-          {canReadAll ? "All consultations" : "My consultations"}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {canReadAll
-            ? `Read-only view of every consultation in the system (${total} total).`
-            : "Book, reschedule, cancel and track your consultations."}
-        </p>
-      </header>
-
-      {canBook && <BookConsultationForm />}
+      {canBook ? <BookConsultationForm heading={heading} /> : heading}
 
       <section className="grid gap-4">
         {canReadAll ? (
