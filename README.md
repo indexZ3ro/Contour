@@ -225,8 +225,7 @@ SSO/IdP group mapping for staff, or an operator tool using the service role on t
 admin is a separate role rather than a promotion, staff would sign up through a separate path.
 
 ## Future improvements
-- Schema validation with zod (shared client/server), and generated OpenAPI docs
 - Vitest tests for request validation and the API route handlers, and running the pgTAP suite in CI
-- Filtering/search UI for admins, and cursor-based pagination
+- Filtering/search UI for admins, and pagination
 - Tutors/availability with an exclusion constraint to prevent double-booking
-- Rate limiting on the booking endpoints; CI running migrations + lints
+- Rate limiting on the booking endpoints
